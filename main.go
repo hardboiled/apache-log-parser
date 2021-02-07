@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/hardboiled/apache-log-parser/parsing"
+	"github.com/hardboiled/apache-log-parser/webstats"
 )
 
 func main() {
@@ -15,13 +16,25 @@ func main() {
 	}
 
 	ch := make(chan parsing.WebServerLogData, 100)
-	// TODO don't alert twice
-	go parsing.ParseWebServerLogDataWithChannel(reader, ch)
+
+	webStats, err := webstats.InitWebStats(10)
 	if err != nil {
-		fmt.Printf("unable to parse input file %v\n", err)
+		fmt.Printf("error initializing webstats %v\n", err)
 		os.Exit(1)
 	}
+
+	go parsing.ParseWebServerLogDataWithChannel(reader, ch)
 	for data := range ch {
-		fmt.Printf("%v", data)
+		lastAlarm := webStats.HasTotalTrafficAlarm()
+		webStats.AddEntry(data.GetRequestSection(), data.Date)
+		curAlarm := webStats.HasTotalTrafficAlarm()
+		if lastAlarm != curAlarm {
+			hits, lastTime := webStats.GetTotalHitsInWindow()
+			fmt.Printf("alarm: %t, hits: %d, lastTime: %d\n", curAlarm, hits, lastTime)
+		}
 	}
 }
+
+// TODO don't alert twice
+// make sure that last statistical thing is flushed and...
+//   note that this is a behavioral assumption
