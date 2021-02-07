@@ -11,7 +11,6 @@ type WebStats struct {
 	isTotalTrafficAlerted bool
 	totalTrafficThreshold int
 	latestTime            uint64
-	startingTotalHits     uint64
 	endingTotalHits       uint64
 }
 
@@ -31,7 +30,7 @@ func InitWebStats(totalTrafficThreshold int) (WebStats, error) {
 func (ws *WebStats) AddEntry(_section string, timeInSeconds uint64) {
 	idx := int(timeInSeconds % windowSize)
 	if ws.latestTime < timeInSeconds {
-		ws.startingTotalHits = ws.startingTotalHits + ws.window[idx]
+		ws.endingTotalHits = ws.endingTotalHits - ws.window[idx]
 		ws.window[idx] = 1
 		ws.latestTime = timeInSeconds
 	} else {
@@ -39,18 +38,16 @@ func (ws *WebStats) AddEntry(_section string, timeInSeconds uint64) {
 	}
 
 	ws.endingTotalHits++
-
-	ws.isTotalTrafficAlerted = int(ws.endingTotalHits-ws.startingTotalHits) > ws.totalTrafficThreshold*(windowSize-1)
 }
 
 // HasTotalTrafficAlarm returns whether alarm is alerted
 func (ws *WebStats) HasTotalTrafficAlarm() bool {
-	return ws.isTotalTrafficAlerted
+	return int(ws.endingTotalHits) > ws.totalTrafficThreshold*(windowSize-1)
 }
 
 // GetTotalHitsInWindow returns total hits for window
 func (ws *WebStats) GetTotalHitsInWindow() (uint64, uint64) {
-	return ws.endingTotalHits - ws.startingTotalHits, ws.latestTime
+	return ws.endingTotalHits, ws.latestTime
 }
 
 func (ws *WebStats) fillDifference(lastIdx, diff int) {

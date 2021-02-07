@@ -11,20 +11,21 @@ import (
 func main() {
 	reader, err := os.Open("./input_files/sample_csv.txt")
 	if err != nil {
-		fmt.Printf("error opening input file %v\n", err)
+		fmt.Printf("error opening input file: %v\n", err)
 		os.Exit(1)
 	}
 
-	ch := make(chan parsing.WebServerLogData, 100)
+	inputCh := make(chan parsing.WebServerLogData, 100)
 
 	webStats, err := webstats.InitWebStats(10)
 	if err != nil {
-		fmt.Printf("error initializing webstats %v\n", err)
+		fmt.Printf("error initializing webstats: %v\n", err)
 		os.Exit(1)
 	}
 
-	go parsing.ParseWebServerLogDataWithChannel(reader, ch)
-	for data := range ch {
+	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
+
+	for data := range inputCh {
 		lastAlarm := webStats.HasTotalTrafficAlarm()
 		webStats.AddEntry(data.GetRequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()

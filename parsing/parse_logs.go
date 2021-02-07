@@ -19,8 +19,8 @@ type WebServerLogData struct {
 }
 
 // ParseWebServerLogDataWithChannel will send back each parsed line through the provided channel
-func ParseWebServerLogDataWithChannel(stream io.ReadCloser, c chan WebServerLogData) error {
-	return gocsv.UnmarshalToChan(stream, c)
+func ParseWebServerLogDataWithChannel(stream io.ReadCloser, c chan WebServerLogData) {
+	gocsv.UnmarshalToChan(stream, c)
 }
 
 // GetRequestSection takes the request and finds the section associated with it
