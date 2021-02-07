@@ -2,16 +2,50 @@ package webstats
 
 import "fmt"
 
-const windowSize = 121 // 2 minutes and 1 second
+const totalHitsWindowSize = 121 // 2 minutes and 1 second
 
 // WebStats keeps track of apache server log stats
 type WebStats struct {
-	window                [windowSize]uint64
-	SectionStats          map[string]uint64
+	window                [totalHitsWindowSize]uint64
+	Sections              map[string]SectionStats
 	isTotalTrafficAlerted bool
 	totalTrafficThreshold int
 	latestTime            uint64
-	endingTotalHits       uint64
+	totalHits             uint64
+}
+
+// GetWindowSize returns length of window
+func (ws *WebStats) GetWindowSize() int {
+	return totalHitsWindowSize
+}
+
+// GetTotalHits returns the total hits within the window
+func (ws *WebStats) GetTotalHits() uint64 {
+	return ws.totalHits
+}
+
+func (ws *WebStats) setTotalHits(hits uint64) {
+	ws.totalHits = hits
+}
+
+// GetHitsAtTime gets the hits at time provided
+func (ws *WebStats) GetHitsAtTime(date uint64) uint64 {
+	idx := date % uint64(ws.GetWindowSize())
+	return ws.window[idx]
+}
+
+func (ws *WebStats) setHitsAtTime(date, val uint64) {
+	idx := date % uint64(ws.GetWindowSize())
+	ws.window[idx] = val
+}
+
+// GetLatestTime gets the latest time recorded
+func (ws *WebStats) GetLatestTime() uint64 {
+	return ws.latestTime
+}
+
+func (ws *WebStats) setLatestTime(date uint64) {
+	ws.latestTime = date
 }
 
 // InitWebStats safely initializes WebStats
@@ -22,42 +56,26 @@ func InitWebStats(totalTrafficThreshold int) (WebStats, error) {
 
 	return WebStats{
 		totalTrafficThreshold: totalTrafficThreshold,
-		SectionStats:          map[string]uint64{},
+		Sections:              map[string]SectionStats{},
 	}, nil
 }
 
 // AddEntry adds an entry and updates statistics
-func (ws *WebStats) AddEntry(_section string, timeInSeconds uint64) {
-	idx := int(timeInSeconds % windowSize)
-	if ws.latestTime < timeInSeconds {
-		ws.endingTotalHits = ws.endingTotalHits - ws.window[idx]
-		ws.window[idx] = 1
-		ws.latestTime = timeInSeconds
-	} else {
-		ws.window[idx] = ws.window[idx] + 1
+func (ws *WebStats) AddEntry(sectionName string, timeInSeconds uint64) {
+	section, ok := ws.Sections[sectionName]
+	if !ok {
+		section = SectionStats{
+			latestTime: timeInSeconds,
+		}
 	}
 
-	ws.endingTotalHits++
+	updateStats(&section, timeInSeconds)
+	ws.Sections[sectionName] = section
+
+	updateStats(ws, timeInSeconds)
 }
 
 // HasTotalTrafficAlarm returns whether alarm is alerted
 func (ws *WebStats) HasTotalTrafficAlarm() bool {
-	return int(ws.endingTotalHits) > ws.totalTrafficThreshold*(windowSize-1)
-}
-
-// GetTotalHitsInWindow returns total hits for window
-func (ws *WebStats) GetTotalHitsInWindow() (uint64, uint64) {
-	return ws.endingTotalHits, ws.latestTime
-}
-
-func (ws *WebStats) fillDifference(lastIdx, diff int) {
-	for i := 0; i < diff; i++ {
-		curIdx := (i + lastIdx) % windowSize
-		ws.window[i] = ws.window[lastIdx]
-		lastIdx = curIdx
-	}
-}
-
-func (ws *WebStats) getStartingIdx(lastIdx int) int {
-	return (lastIdx + windowSize + 1) % windowSize
+	return int(ws.totalHits) > ws.totalTrafficThreshold*(totalHitsWindowSize-1)
 }

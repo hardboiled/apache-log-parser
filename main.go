@@ -30,8 +30,13 @@ func main() {
 		webStats.AddEntry(data.GetRequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()
 		if lastAlarm != curAlarm {
-			hits, lastTime := webStats.GetTotalHitsInWindow()
-			fmt.Printf("alarm: %t, hits: %d, lastTime: %d\n", curAlarm, hits, lastTime)
+			fmt.Printf("alarm: %t, hits: %d, lastTime: %d\n", curAlarm, webStats.GetTotalHits(), webStats.GetLatestTime())
+		}
+		if data.Date%10 == 0 {
+			fmt.Println("Sections:")
+			for k, v := range webStats.Sections {
+				fmt.Printf("%s -> hits: %d, latestTime: %d\n", k, v.GetTotalHits(), v.GetLatestTime())
+			}
 		}
 	}
 }
