@@ -15,12 +15,12 @@ type WebStats struct {
 }
 
 // GetWindowSize returns length of window
-func (ws *WebStats) GetWindowSize() int {
+func (ws *WebStats) WindowSize() int {
 	return totalHitsWindowSize
 }
 
 // GetTotalHits returns the total hits within the window
-func (ws *WebStats) GetTotalHits() uint64 {
+func (ws *WebStats) TotalHits() uint64 {
 	return ws.totalHits
 }
 
@@ -29,18 +29,18 @@ func (ws *WebStats) setTotalHits(hits uint64) {
 }
 
 // GetHitsAtTime gets the hits at time provided
-func (ws *WebStats) GetHitsAtTime(date uint64) uint64 {
-	idx := date % uint64(ws.GetWindowSize())
+func (ws *WebStats) HitsAtTime(date uint64) uint64 {
+	idx := date % uint64(ws.WindowSize())
 	return ws.window[idx]
 }
 
 func (ws *WebStats) setHitsAtTime(date, val uint64) {
-	idx := date % uint64(ws.GetWindowSize())
+	idx := date % uint64(ws.WindowSize())
 	ws.window[idx] = val
 }
 
 // GetLatestTime gets the latest time recorded
-func (ws *WebStats) GetLatestTime() uint64 {
+func (ws *WebStats) LatestTime() uint64 {
 	return ws.latestTime
 }
 

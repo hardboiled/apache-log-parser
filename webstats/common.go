@@ -1,22 +1,22 @@
 package webstats
 
 type localStats interface {
-	GetWindowSize() int
-	GetHitsAtTime(uint64) uint64
+	WindowSize() int
+	HitsAtTime(uint64) uint64
 	setHitsAtTime(uint64, uint64)
-	GetTotalHits() uint64
+	TotalHits() uint64
 	setTotalHits(uint64)
-	GetLatestTime() uint64
+	LatestTime() uint64
 	setLatestTime(uint64)
 }
 
 func updateStats(stats localStats, timeInSeconds uint64) {
-	hitsAtCurrentTime := stats.GetHitsAtTime(timeInSeconds)
-	latestTime := stats.GetLatestTime()
-	currentTotalHits := stats.GetTotalHits()
+	hitsAtCurrentTime := stats.HitsAtTime(timeInSeconds)
+	latestTime := stats.LatestTime()
+	currentTotalHits := stats.TotalHits()
 
-	if stats.GetLatestTime() < timeInSeconds {
-		if latestTime < timeInSeconds-uint64(stats.GetWindowSize()) {
+	if stats.LatestTime() < timeInSeconds {
+		if latestTime < timeInSeconds-uint64(stats.WindowSize()) {
 			currentTotalHits = 0
 		} else {
 			currentTotalHits = currentTotalHits - hitsAtCurrentTime

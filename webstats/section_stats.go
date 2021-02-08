@@ -10,12 +10,12 @@ type SectionStats struct {
 }
 
 // GetWindowSize returns length of window
-func (s *SectionStats) GetWindowSize() int {
+func (s *SectionStats) WindowSize() int {
 	return sectionHitsWindowSize
 }
 
 // GetTotalHits returns the total hits within the window
-func (s *SectionStats) GetTotalHits() uint64 {
+func (s *SectionStats) TotalHits() uint64 {
 	return s.totalHits
 }
 
@@ -28,17 +28,17 @@ func (s *SectionStats) setLatestTime(date uint64) {
 }
 
 // GetHitsAtTime gets the hits at time provided
-func (s *SectionStats) GetHitsAtTime(date uint64) uint64 {
-	idx := date % uint64(s.GetWindowSize())
+func (s *SectionStats) HitsAtTime(date uint64) uint64 {
+	idx := date % uint64(s.WindowSize())
 	return s.window[idx]
 }
 
 func (s *SectionStats) setHitsAtTime(date, val uint64) {
-	idx := date % uint64(s.GetWindowSize())
+	idx := date % uint64(s.WindowSize())
 	s.window[idx] = val
 }
 
 // GetLatestTime gets the latest time recorded
-func (s *SectionStats) GetLatestTime() uint64 {
+func (s *SectionStats) LatestTime() uint64 {
 	return s.latestTime
 }
