@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hardboiled/apache-log-parser/analytics"
 	"github.com/hardboiled/apache-log-parser/parsing"
 	"github.com/hardboiled/apache-log-parser/webstats"
 )
@@ -16,6 +17,8 @@ func main() {
 	}
 
 	inputCh := make(chan parsing.WebServerLogData, 100)
+	outputCh := make(chan analytics.ProcessAndOutputData)
+	defer close(outputCh)
 
 	webStats, err := webstats.InitWebStats(10)
 	if err != nil {
@@ -24,23 +27,21 @@ func main() {
 	}
 
 	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
+	go analytics.ProcessStats(outputCh)
 
 	for data := range inputCh {
 		lastAlarm := webStats.HasTotalTrafficAlarm()
 		webStats.AddEntry(data.RequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()
 		if lastAlarm != curAlarm {
-			fmt.Printf("alarm: %t, hits: %d, lastTime: %d\n", curAlarm, webStats.TotalHits(), webStats.LatestTime())
+			outputCh <- analytics.TotalHitsAlarm{Flag: curAlarm, Hits: webStats.TotalHits(), CurrentTime: webStats.LatestTime()}
 		}
 		if data.Date%10 == 0 {
-			fmt.Println("Sections:")
-			for k, v := range webStats.Sections {
-				fmt.Printf("%s -> hits: %d, latestTime: %d\n", k, v.TotalHits(), v.LatestTime())
+			outputCh <- &analytics.SectionData{
+				LatestTime: webStats.LatestTime(),
+				Window:     webStats.GetWindowForRange(data.Date-9, data.Date),
 			}
 		}
 	}
-}
 
-// TODO don't alert twice
-// make sure that last statistical thing is flushed and...
-//   note that this is a behavioral assumption
+}
