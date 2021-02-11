@@ -5,7 +5,9 @@ package webstats
 
 import "fmt"
 
-const totalHitsWindowSize = 121 // 2 minutes and 1 second
+const MinWindowSize = 120 // 2 minutes and 1 second
+
+const alarmWindow = MinWindowSize + 1
 
 // WindowEntry holds section data and total hits for a given time entry
 type WindowEntry struct {
@@ -15,16 +17,16 @@ type WindowEntry struct {
 
 // WebStats keeps track of apache server log stats
 type WebStats struct {
-	window                [totalHitsWindowSize]WindowEntry
+	window                []WindowEntry
 	isTotalTrafficAlerted bool
-	totalTrafficThreshold int
+	totalTrafficThreshold uint
 	latestTime            uint64
 	totalHits             uint64
 }
 
 // WindowSize returns length of window
 func (ws *WebStats) WindowSize() int {
-	return totalHitsWindowSize
+	return len(ws.window)
 }
 
 // TotalHits returns the total hits within the window
@@ -54,8 +56,8 @@ func (ws *WebStats) LatestTime() uint64 {
 
 // GetWindowForRange returns the window for begin and end inclusive
 func (ws *WebStats) GetWindowForRange(begin, end uint64) []WindowEntry {
-	beginIdx := (begin + 1) % totalHitsWindowSize
-	endIdx := (end + 1) % totalHitsWindowSize
+	beginIdx := (begin + 1) % alarmWindow
+	endIdx := (end + 1) % alarmWindow
 
 	if endIdx < beginIdx {
 		return append(ws.window[beginIdx:], ws.window[:endIdx]...)
@@ -69,29 +71,34 @@ func (ws *WebStats) setLatestTime(date uint64) {
 }
 
 // InitWebStats safely initializes WebStats
-func InitWebStats(totalTrafficThreshold int) (WebStats, error) {
-	if totalTrafficThreshold <= 0 {
+func InitWebStats(windowSize, totalTrafficThreshold uint) (WebStats, error) {
+	if totalTrafficThreshold == 0 {
 		return WebStats{}, fmt.Errorf("%d is an invalid threshold", totalTrafficThreshold)
+	}
+
+	if windowSize < MinWindowSize {
+		return WebStats{}, fmt.Errorf("%d is an invalid window size", windowSize)
 	}
 
 	return WebStats{
 		totalTrafficThreshold: totalTrafficThreshold,
+		window:                make([]WindowEntry, windowSize+1),
 	}, nil
 }
 
 // AddEntry adds an entry and updates statistics
 func (ws *WebStats) AddEntry(sectionName string, timeInSeconds uint64) {
 	ws.updateStats(timeInSeconds)
-	if ws.window[timeInSeconds%totalHitsWindowSize].Sections == nil {
-		ws.window[timeInSeconds%totalHitsWindowSize].Sections = map[string]uint64{}
+	if ws.window[timeInSeconds%alarmWindow].Sections == nil {
+		ws.window[timeInSeconds%alarmWindow].Sections = map[string]uint64{}
 	}
-	section := ws.window[timeInSeconds%totalHitsWindowSize].Sections[sectionName]
-	ws.window[timeInSeconds%totalHitsWindowSize].Sections[sectionName] = section + 1
+	section := ws.window[timeInSeconds%alarmWindow].Sections[sectionName]
+	ws.window[timeInSeconds%alarmWindow].Sections[sectionName] = section + 1
 }
 
 // HasTotalTrafficAlarm returns whether alarm is alerted
 func (ws *WebStats) HasTotalTrafficAlarm() bool {
-	return int(ws.totalHits) > ws.totalTrafficThreshold*(totalHitsWindowSize-1)
+	return ws.totalHits > uint64(ws.totalTrafficThreshold)*uint64(alarmWindow-1)
 }
 
 func (ws *WebStats) updateStats(timeInSeconds uint64) {
