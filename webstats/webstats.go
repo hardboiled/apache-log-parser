@@ -113,21 +113,24 @@ func (ws *WebStats) HasTotalTrafficAlarm() bool {
 }
 
 func (ws *WebStats) updateStats(timeInSeconds uint64) {
-	latestTime := ws.LatestTime()
 	currentTotalHitsForLast2Min := ws.TotalHitsForLast2Min()
 	hitsForCurrentTime := ws.HitsAtTime(timeInSeconds)
 
 	if ws.LatestTime() < timeInSeconds {
-		if latestTime <= timeInSeconds-uint64(twoMinutes) {
+		if ws.LatestTime() <= timeInSeconds-uint64(twoMinutes) {
 			// if no hits have come in for the last two minutes, reset counter
 			currentTotalHitsForLast2Min = 0
 		} else {
 			// subtract hits from 2 mins ago, since now we have a new latest time
 			currentTotalHitsForLast2Min = currentTotalHitsForLast2Min - ws.HitsAtTime(timeInSeconds-twoMinutes)
 		}
-		// reset hits at currentTime to 0 in case window has rotated
-		hitsForCurrentTime = 0
-		ws.setLatestTime(timeInSeconds)
+
+		// have to zero out entries in window for any gaps between latest time recorded and current time.
+		//   Otherwise, stale calculations for the previous window could be left behind and cause future
+		//   calculations to be wrong.
+		for i := ws.LatestTime() + 1; i <= timeInSeconds; i++ {
+			ws.setLatestTime(timeInSeconds)
+		}
 	}
 
 	ws.setHitsAtTime(timeInSeconds, hitsForCurrentTime+1)
