@@ -57,9 +57,15 @@ func (ws *WebStats) LatestTime() uint64 {
 }
 
 // GetWindowForRange returns the window for begin and end inclusive
-func (ws *WebStats) GetWindowForRange(begin, end uint64) []WindowEntry {
-	beginIdx := (begin + 1) % uint64(len(ws.window))
-	endIdx := (end + 1) % uint64(len(ws.window))
+func (ws *WebStats) GetWindowForRange(curTime uint64, timeRangeForLastSeconds uint) []WindowEntry {
+	beginRange := curTime - uint64(timeRangeForLastSeconds)
+	windowSize := uint64(len(ws.window))
+	endIdx := (curTime + 1) % windowSize // endIdx is exclusive when mapping slices
+
+	// for the timeRangeForLastSeconds, if it's 10, we'd want the last 10 seconds worth of time.
+	//   If curTime is 11, we'd want seconds 2 - 11 (which would be all hits from the last 10 seconds)
+	//   Thus, we have to add one to the beginRange to avoid including hits at time 1 here.
+	beginIdx := (beginRange + 1) % windowSize
 
 	if endIdx < beginIdx {
 		return append(ws.window[beginIdx:], ws.window[:endIdx]...)

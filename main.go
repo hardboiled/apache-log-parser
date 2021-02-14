@@ -86,7 +86,7 @@ func main() {
 		if data.Date%uint64(interval) == 0 {
 			outputCh <- &analytics.SectionData{
 				LatestTime: webStats.LatestTime(),
-				Window:     webStats.GetWindowForRange(data.Date-9, data.Date),
+				Window:     webStats.GetWindowForRange(data.Date, interval),
 			}
 		}
 	}
