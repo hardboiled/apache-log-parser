@@ -5,9 +5,11 @@ package webstats
 
 import "fmt"
 
-const MinWindowSize = 120 // 2 minutes and 1 second
+// MinWindowSize is the smallest size that the WebStats window
+//  can be initialized to.
+const MinWindowSize = 120 // 2 minutes
 
-const alarmWindow = MinWindowSize + 1
+const twoMinAlarmWindow = MinWindowSize + 1 // 2 minutes and 1 second
 
 // WindowEntry holds section data and total hits for a given time entry
 type WindowEntry struct {
@@ -21,7 +23,7 @@ type WebStats struct {
 	isTotalTrafficAlerted bool
 	totalTrafficThreshold uint
 	latestTime            uint64
-	totalHits             uint64
+	totalHitsForLast2Min  uint64
 }
 
 // WindowSize returns length of window
@@ -29,13 +31,13 @@ func (ws *WebStats) WindowSize() int {
 	return len(ws.window)
 }
 
-// TotalHits returns the total hits within the window
-func (ws *WebStats) TotalHits() uint64 {
-	return ws.totalHits
+// TotalHitsForLast2Min returns the total hits within the window
+func (ws *WebStats) TotalHitsForLast2Min() uint64 {
+	return ws.totalHitsForLast2Min
 }
 
-func (ws *WebStats) setTotalHits(hits uint64) {
-	ws.totalHits = hits
+func (ws *WebStats) setTotalHitsForLast2Min(hits uint64) {
+	ws.totalHitsForLast2Min = hits
 }
 
 // HitsAtTime gets the hits at time provided
@@ -56,8 +58,8 @@ func (ws *WebStats) LatestTime() uint64 {
 
 // GetWindowForRange returns the window for begin and end inclusive
 func (ws *WebStats) GetWindowForRange(begin, end uint64) []WindowEntry {
-	beginIdx := (begin + 1) % alarmWindow
-	endIdx := (end + 1) % alarmWindow
+	beginIdx := (begin + 1) % uint64(len(ws.window))
+	endIdx := (end + 1) % uint64(len(ws.window))
 
 	if endIdx < beginIdx {
 		return append(ws.window[beginIdx:], ws.window[:endIdx]...)
@@ -89,34 +91,39 @@ func InitWebStats(windowSize, totalTrafficThreshold uint) (WebStats, error) {
 // AddEntry adds an entry and updates statistics
 func (ws *WebStats) AddEntry(sectionName string, timeInSeconds uint64) {
 	ws.updateStats(timeInSeconds)
-	if ws.window[timeInSeconds%alarmWindow].Sections == nil {
-		ws.window[timeInSeconds%alarmWindow].Sections = map[string]uint64{}
+	curIdx := timeInSeconds % uint64(len(ws.window))
+	if ws.window[curIdx].Sections == nil {
+		ws.window[curIdx].Sections = map[string]uint64{}
 	}
-	section := ws.window[timeInSeconds%alarmWindow].Sections[sectionName]
-	ws.window[timeInSeconds%alarmWindow].Sections[sectionName] = section + 1
+	section := ws.window[curIdx].Sections[sectionName]
+	ws.window[curIdx].Sections[sectionName] = section + 1
 }
 
 // HasTotalTrafficAlarm returns whether alarm is alerted
 func (ws *WebStats) HasTotalTrafficAlarm() bool {
-	return ws.totalHits > uint64(ws.totalTrafficThreshold)*uint64(alarmWindow-1)
+	// To calcuate whether we've exceeded the average threshold allowed, we have to use multiplication
+	//   of the threshold by the window size, since dividing integers can result in loss of data.
+	return ws.totalHitsForLast2Min > uint64(ws.totalTrafficThreshold)*uint64(twoMinAlarmWindow)
 }
 
 func (ws *WebStats) updateStats(timeInSeconds uint64) {
-	hitsAtCurrentTime := ws.HitsAtTime(timeInSeconds)
 	latestTime := ws.LatestTime()
-	currentTotalHits := ws.TotalHits()
+	currentTotalHitsForLast2Min := ws.TotalHitsForLast2Min()
+	hitsForCurrentTime := ws.HitsAtTime(timeInSeconds)
 
 	if ws.LatestTime() < timeInSeconds {
-		if latestTime < timeInSeconds-uint64(ws.WindowSize()) {
-			currentTotalHits = 0
+		if latestTime <= timeInSeconds-uint64(twoMinAlarmWindow) {
+			// if no hits have come in for the last two minutes, reset counter
+			currentTotalHitsForLast2Min = 0
 		} else {
-			currentTotalHits = currentTotalHits - hitsAtCurrentTime
+			// subtract hits from 2 mins ago, since now we have a new latest time
+			currentTotalHitsForLast2Min = currentTotalHitsForLast2Min - ws.HitsAtTime(timeInSeconds-twoMinAlarmWindow)
 		}
-		hitsAtCurrentTime = 0
-		latestTime = timeInSeconds
+		// reset hits at currentTime to 0 in case window has rotated
+		hitsForCurrentTime = 0
+		ws.setLatestTime(timeInSeconds)
 	}
 
-	ws.setHitsAtTime(timeInSeconds, hitsAtCurrentTime+1)
-	ws.setTotalHits(currentTotalHits + 1)
-	ws.setLatestTime(latestTime)
+	ws.setHitsAtTime(timeInSeconds, hitsForCurrentTime+1)
+	ws.setTotalHitsForLast2Min(currentTotalHitsForLast2Min + 1)
 }

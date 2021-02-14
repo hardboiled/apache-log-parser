@@ -77,7 +77,7 @@ func main() {
 		webStats.AddEntry(data.RequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()
 		if lastAlarm != curAlarm {
-			outputCh <- analytics.TotalHitsAlarm{Flag: curAlarm, Hits: webStats.TotalHits(), CurrentTime: webStats.LatestTime()}
+			outputCh <- analytics.TotalHitsAlarm{Flag: curAlarm, Hits: webStats.TotalHitsForLast2Min(), CurrentTime: webStats.LatestTime()}
 		}
 		if data.Date%uint64(interval) == 0 {
 			outputCh <- &analytics.SectionData{
