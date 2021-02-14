@@ -14,14 +14,14 @@ import (
 
 const (
 	defaultInterval       = 10
-	defaultWindowSize     = 120
+	defaultWindowSize     = webstats.MinWindowSize
 	defaultAlarmThreshold = 10
 )
 
 func getFlags() (uint, uint, uint, error) {
 	interval := flag.Uint("interval", defaultInterval, "integer in seconds")
 	windowSize := flag.Uint("window-retention", defaultWindowSize, fmt.Sprintf("integer in seconds (min %d)", defaultWindowSize))
-	alarmThreshold := flag.Uint("alarm-threshold", 1<<10, "triggers alarm on request/per second over 2 mins")
+	alarmThreshold := flag.Uint("alarm-threshold", defaultAlarmThreshold, "triggers alarm on request/per second over 2 mins")
 	errStrings := []string{}
 
 	flag.Parse()

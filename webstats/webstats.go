@@ -5,11 +5,11 @@ package webstats
 
 import "fmt"
 
+const twoMinutes = 120 // 2 minutes
+
 // MinWindowSize is the smallest size that the WebStats window
 //  can be initialized to.
-const MinWindowSize = 120 // 2 minutes
-
-const twoMinAlarmWindow = MinWindowSize + 1 // 2 minutes and 1 second
+const MinWindowSize = twoMinutes // 2 minutes
 
 // WindowEntry holds section data and total hits for a given time entry
 type WindowEntry struct {
@@ -84,7 +84,7 @@ func InitWebStats(windowSize, totalTrafficThreshold uint) (WebStats, error) {
 
 	return WebStats{
 		totalTrafficThreshold: totalTrafficThreshold,
-		window:                make([]WindowEntry, windowSize+1),
+		window:                make([]WindowEntry, int(windowSize)),
 	}, nil
 }
 
@@ -103,7 +103,7 @@ func (ws *WebStats) AddEntry(sectionName string, timeInSeconds uint64) {
 func (ws *WebStats) HasTotalTrafficAlarm() bool {
 	// To calcuate whether we've exceeded the average threshold allowed, we have to use multiplication
 	//   of the threshold by the window size, since dividing integers can result in loss of data.
-	return ws.totalHitsForLast2Min > uint64(ws.totalTrafficThreshold)*uint64(twoMinAlarmWindow)
+	return ws.totalHitsForLast2Min > uint64(ws.totalTrafficThreshold*twoMinutes)
 }
 
 func (ws *WebStats) updateStats(timeInSeconds uint64) {
@@ -112,12 +112,12 @@ func (ws *WebStats) updateStats(timeInSeconds uint64) {
 	hitsForCurrentTime := ws.HitsAtTime(timeInSeconds)
 
 	if ws.LatestTime() < timeInSeconds {
-		if latestTime <= timeInSeconds-uint64(twoMinAlarmWindow) {
+		if latestTime <= timeInSeconds-uint64(twoMinutes) {
 			// if no hits have come in for the last two minutes, reset counter
 			currentTotalHitsForLast2Min = 0
 		} else {
 			// subtract hits from 2 mins ago, since now we have a new latest time
-			currentTotalHitsForLast2Min = currentTotalHitsForLast2Min - ws.HitsAtTime(timeInSeconds-twoMinAlarmWindow)
+			currentTotalHitsForLast2Min = currentTotalHitsForLast2Min - ws.HitsAtTime(timeInSeconds-twoMinutes)
 		}
 		// reset hits at currentTime to 0 in case window has rotated
 		hitsForCurrentTime = 0
