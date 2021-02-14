@@ -38,6 +38,10 @@ func getFlags() (uint, uint, uint, error) {
 		errStrings = append(errStrings, "alarmThreshold cannot be < 1")
 	}
 
+	if *interval*2 > *windowSize {
+		errStrings = append(errStrings, "window must be able to hold at least two intervals")
+	}
+
 	var err error
 	if len(errStrings) > 0 {
 		err = errors.New(strings.Join(errStrings, "\n"))
