@@ -77,18 +77,18 @@ func main() {
 	go analytics.ProcessStats(outputCh)
 
 	for data := range inputCh {
+		if data.Date%uint64(interval) == 0 && webStats.LatestTime() < data.Date {
+			outputCh <- &analytics.SectionData{
+				LatestTime: webStats.LatestTime(),
+				Window:     webStats.GetWindowForRange(webStats.LatestTime(), interval),
+			}
+		}
+
 		lastAlarm := webStats.HasTotalTrafficAlarm()
 		webStats.AddEntry(data.RequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()
 		if lastAlarm != curAlarm {
 			outputCh <- analytics.TotalHitsAlarm{Flag: curAlarm, Hits: webStats.TotalHitsForLast2Min(), CurrentTime: webStats.LatestTime()}
 		}
-		if data.Date%uint64(interval) == 0 {
-			outputCh <- &analytics.SectionData{
-				LatestTime: webStats.LatestTime(),
-				Window:     webStats.GetWindowForRange(data.Date, interval),
-			}
-		}
 	}
-
 }
