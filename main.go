@@ -24,36 +24,23 @@ func getFlags() (manage.Config, error) {
 	interval := flag.Uint("interval", defaultInterval, "integer in seconds")
 	windowSize := flag.Uint("window-retention", defaultWindowSize, fmt.Sprintf("integer in seconds (min %d)", defaultWindowSize))
 	alarmThreshold := flag.Uint("alarm-threshold", defaultAlarmThreshold, "triggers alarm on request/per second over 2 mins")
-	inputFilepath := flag.String("input-filepath", defaultInputFilepath, "triggers alarm on request/per second over 2 mins")
-	outputFilepath := flag.String("output-filepath", "", "triggers alarm on request/per second over 2 mins")
+	inputFilepath := flag.String("input-filepath", defaultInputFilepath, "file path to read in")
 
 	flag.Parse()
 
-	return manage.InitConfig(*interval, *windowSize, *alarmThreshold, *inputFilepath, *outputFilepath)
+	return manage.InitConfig(*interval, *windowSize, *alarmThreshold, *inputFilepath)
 }
 
-func setupBuffers(config manage.Config) (io.ReadCloser, chan parsing.WebServerLogData, io.WriteCloser, chan analytics.ProcessAndOutputData, error) {
+func setupBuffers(config manage.Config) (io.ReadCloser, chan parsing.WebServerLogData, chan analytics.ProcessAndOutputData, error) {
 	reader, err := os.Open(config.InputFilepath)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("error opening input file: %v", err)
-	}
-
-	var writer io.WriteCloser
-	if config.OutputFilepath != "" {
-		writer, err = os.OpenFile(config.OutputFilepath, os.O_CREATE, os.FileMode(os.O_RDWR))
-		if err != nil {
-			reader.Close()
-			return nil, nil, nil, nil, fmt.Errorf("error opening input file: %v", err)
-		}
-
-	} else {
-		writer = os.Stdout
+		return nil, nil, nil, fmt.Errorf("error opening input file: %v", err)
 	}
 
 	inputCh := make(chan parsing.WebServerLogData, 100)
 	outputCh := make(chan analytics.ProcessAndOutputData)
 
-	return reader, inputCh, writer, outputCh, nil
+	return reader, inputCh, outputCh, nil
 }
 
 func main() {
@@ -63,7 +50,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	reader, inputCh, writer, outputCh, err := setupBuffers(config)
+	reader, inputCh, outputCh, err := setupBuffers(config)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -72,12 +59,11 @@ func main() {
 	// setup go routines and channels
 	var wg sync.WaitGroup
 	defer reader.Close()
-	defer writer.Close()
 	defer close(outputCh)
 
 	// Note: `ParseWebServerLogDataWithChannel` closes the inputCh when finished
 	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
-	go analytics.ProcessStats(outputCh, writer, &wg)
+	go analytics.ProcessStats(outputCh, os.Stdout, &wg)
 
 	// read in first entry to initialize
 	firstEntry := <-inputCh

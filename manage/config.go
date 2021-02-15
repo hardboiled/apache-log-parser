@@ -14,10 +14,9 @@ type Config struct {
 	WindowSize     uint
 	AlarmThreshold uint
 	InputFilepath  string
-	OutputFilepath string
 }
 
-func InitConfig(interval, windowSize, alarmThreshold uint, inputFilepath, outputFilepath string) (Config, error) {
+func InitConfig(interval, windowSize, alarmThreshold uint, inputFilepath string) (Config, error) {
 	errStrings := []string{}
 	if interval < 1 {
 		errStrings = append(errStrings, "interval cannot be < 1")
@@ -43,12 +42,6 @@ func InitConfig(interval, windowSize, alarmThreshold uint, inputFilepath, output
 		errStrings = append(errStrings, fmt.Sprintf("input filepath %s does not exist", inputFilepath))
 	}
 
-	if outputFilepath != "" {
-		if _, err := os.Stat(outputFilepath); os.IsNotExist(err) {
-			errStrings = append(errStrings, fmt.Sprintf("input filepath %s does not exist", inputFilepath))
-		}
-	}
-
 	var err error
 	if len(errStrings) > 0 {
 		err = errors.New(strings.Join(errStrings, "\n"))
@@ -59,6 +52,5 @@ func InitConfig(interval, windowSize, alarmThreshold uint, inputFilepath, output
 		WindowSize:     windowSize,
 		AlarmThreshold: alarmThreshold,
 		InputFilepath:  inputFilepath,
-		OutputFilepath: outputFilepath,
 	}, err
 }
