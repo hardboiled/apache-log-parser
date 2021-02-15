@@ -73,7 +73,11 @@ func main() {
 		os.Exit(1)
 	}
 	webStats.AddEntry(firstEntry.RequestSection(), firstEntry.Date)
-	scheduleInterval := analytics.InitScheduleInterval(firstEntry.Date, config.Interval)
+	scheduleInterval, err := analytics.InitScheduleInterval(firstEntry.Date, config.Interval)
+	if err != nil {
+		fmt.Printf("error initializing scheduleInterval: %v\n", err)
+		os.Exit(1)
+	}
 
 	// main loop
 	for data := range inputCh {

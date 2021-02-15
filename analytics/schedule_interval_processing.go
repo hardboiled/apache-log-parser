@@ -1,6 +1,9 @@
 package analytics
 
-const bufferForOverlappingLogTimes = uint64(5)
+import "fmt"
+
+// BufferForOverlappingLogTimes exported for testing
+const BufferForOverlappingLogTimes = uint64(5)
 
 // ScheduleInterval helps determine when to output interval statistics, specifically `SectionData`
 type ScheduleInterval struct {
@@ -44,19 +47,26 @@ func (sp *ScheduleInterval) MarkAsProcessed() {
 }
 
 // InitScheduleInterval initializes the ScheduleInterval structure properly
-func InitScheduleInterval(startTime, interval uint64) ScheduleInterval {
+func InitScheduleInterval(startTime, interval uint64) (ScheduleInterval, error) {
+	if startTime < BufferForOverlappingLogTimes {
+		return ScheduleInterval{}, fmt.Errorf("Start time can't be less than %d", BufferForOverlappingLogTimes)
+	}
+	if interval < BufferForOverlappingLogTimes {
+		return ScheduleInterval{}, fmt.Errorf("interval can't be less than %d", BufferForOverlappingLogTimes)
+	}
+
 	return ScheduleInterval{
 		// we return a `lastTimeProcessed` as startTime - bufferForOverlappingLogTimes
 		// because apache log lines are not guaranteed to be printed exactly in order by time
 		// so we backtrack a few seconds to avoid missing older log lines that are after the
 		// first line in the input
-		lastTimeProcessed: startTime - bufferForOverlappingLogTimes,
+		lastTimeProcessed: startTime - BufferForOverlappingLogTimes,
 		secondsAgo:        interval - 1,
-	}
+	}, nil
 }
 
 func (sp *ScheduleInterval) shouldProcess(nextDate uint64) bool {
-	return sp.isScheduled() && nextDate > sp.timeToProcess+bufferForOverlappingLogTimes
+	return sp.isScheduled() && nextDate > sp.timeToProcess+BufferForOverlappingLogTimes
 }
 
 func (sp *ScheduleInterval) shouldSchedule(nextDate uint64) bool {
