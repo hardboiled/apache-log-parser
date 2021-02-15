@@ -5,6 +5,7 @@ package analytics
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/hardboiled/apache-log-parser/webstats"
 )
@@ -78,14 +79,21 @@ func (sd *SectionData) Do() {
 	}
 
 	fmt.Printf("Stats for time range %d - %d\n", sd.LatestTime-uint64(len(sd.Window)-1), sd.LatestTime)
+	totalHitsForWindow := uint64(0)
+	for _, v := range sd.Window {
+		totalHitsForWindow = totalHitsForWindow + v.TotalHitsForTimeSlot
+	}
+	fmt.Printf("\ttotal hits for this window %d\n", totalHitsForWindow)
+
 	for _, v := range topSectionsOrderedDesc {
 		fmt.Printf("\t %s -> hits: %d\n", v.name, v.hits)
 	}
 }
 
 // ProcessStats runs calculations and prints results
-func ProcessStats(ch chan ProcessAndOutputData) {
+func ProcessStats(ch chan ProcessAndOutputData, wg *sync.WaitGroup) {
 	for val := range ch {
 		val.Do()
+		wg.Done()
 	}
 }

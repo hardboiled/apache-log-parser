@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/hardboiled/apache-log-parser/analytics"
 	"github.com/hardboiled/apache-log-parser/parsing"
@@ -75,10 +76,12 @@ func main() {
 
 	inputCh := make(chan parsing.WebServerLogData, 100)
 	outputCh := make(chan analytics.ProcessAndOutputData)
+	var wg sync.WaitGroup
+
 	defer close(outputCh)
 
 	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
-	go analytics.ProcessStats(outputCh)
+	go analytics.ProcessStats(outputCh, &wg)
 
 	firstEntry := <-inputCh
 	webStats, err := webstats.InitWebStats(windowSize, threshold, firstEntry.Date)
@@ -95,6 +98,7 @@ func main() {
 		}
 
 		if scheduleProcess.shouldProcess(data.Date) {
+			wg.Add(1)
 			outputCh <- &analytics.SectionData{
 				LatestTime: scheduleProcess.timeToProcess,
 				Window:     webStats.GetWindowForRange(scheduleProcess.timeToProcess, scheduleProcess.secondsAgo),
@@ -106,6 +110,7 @@ func main() {
 		webStats.AddEntry(data.RequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()
 		if lastAlarm != curAlarm {
+			wg.Add(1)
 			outputCh <- analytics.TotalHitsAlarm{Flag: curAlarm, Hits: webStats.TotalHitsForLast2Min(), CurrentTime: webStats.LatestTime()}
 		}
 	}
@@ -117,9 +122,12 @@ func main() {
 			numSecondsLeft = interval // if lastTimeProcessed was greater than the interval, only process the last interval
 		}
 
+		wg.Add(1)
 		outputCh <- &analytics.SectionData{
 			LatestTime: webStats.LatestTime(),
 			Window:     webStats.GetWindowForRange(webStats.LatestTime(), numSecondsLeft),
 		}
 	}
+
+	wg.Wait()
 }

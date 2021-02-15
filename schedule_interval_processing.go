@@ -10,17 +10,17 @@ type scheduleInterval struct {
 
 func initScheduleInterval(startTime, interval uint64) scheduleInterval {
 	return scheduleInterval{
-		lastTimeProcessed: startTime,
+		lastTimeProcessed: startTime - bufferForOverlappingLogTimes,
 		secondsAgo:        interval - 1,
 	}
 }
 
 func (sp *scheduleInterval) shouldProcess(nextDate uint64) bool {
-	return sp.isScheduled() && nextDate-sp.timeToProcess > bufferForOverlappingLogTimes
+	return sp.isScheduled() && nextDate > sp.timeToProcess+bufferForOverlappingLogTimes
 }
 
 func (sp *scheduleInterval) shouldSchedule(nextDate uint64) bool {
-	return nextDate-sp.lastTimeProcessed > sp.secondsAgo
+	return nextDate > sp.secondsAgo+sp.lastTimeProcessed
 }
 
 func (sp *scheduleInterval) schedule(scheduleDate uint64) {
