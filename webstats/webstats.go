@@ -54,6 +54,11 @@ func (ws *WebStats) setHitsAtTime(date, val uint64) {
 	ws.window[idx].TotalHitsForTimeSlot = val
 }
 
+func (ws *WebStats) clearHitsAtTime(date uint64) {
+	idx := date % uint64(ws.WindowSize())
+	ws.window[idx] = WindowEntry{}
+}
+
 // LatestTime gets the latest time recorded
 func (ws *WebStats) LatestTime() uint64 {
 	return ws.latestTime
@@ -114,7 +119,6 @@ func (ws *WebStats) HasTotalTrafficAlarm() bool {
 
 func (ws *WebStats) updateStats(timeInSeconds uint64) {
 	currentTotalHitsForLast2Min := ws.TotalHitsForLast2Min()
-	hitsForCurrentTime := ws.HitsAtTime(timeInSeconds)
 
 	if ws.LatestTime() < timeInSeconds {
 		if ws.LatestTime() <= timeInSeconds-uint64(twoMinutes) {
@@ -128,14 +132,15 @@ func (ws *WebStats) updateStats(timeInSeconds uint64) {
 		// have to zero out entries in window for any gaps between latest time recorded and current time.
 		//   Otherwise, stale calculations for the previous window could be left behind and cause future
 		//   calculations to be wrong.
-		for i := ws.LatestTime() + 1; i < timeInSeconds; i++ {
+		for i := ws.LatestTime() + 1; i <= timeInSeconds; i++ {
 			ws.setHitsAtTime(i, 0)
+			ws.clearHitsAtTime(i)
 		}
 
-		hitsForCurrentTime = 0
 		ws.setLatestTime(timeInSeconds)
 	}
 
+	hitsForCurrentTime := ws.HitsAtTime(timeInSeconds)
 	ws.setHitsAtTime(timeInSeconds, hitsForCurrentTime+1)
 	ws.setTotalHitsForLast2Min(currentTotalHitsForLast2Min + 1)
 }
