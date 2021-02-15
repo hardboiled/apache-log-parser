@@ -23,7 +23,7 @@ func ParseWebServerLogDataWithChannel(stream io.ReadCloser, c chan WebServerLogD
 	gocsv.UnmarshalToChan(stream, c)
 }
 
-// GetRequestSection takes the request and finds the section associated with it
+// RequestSection takes the request and finds the section associated with it
 func (ld *WebServerLogData) RequestSection() string {
 	startIdx := strings.IndexAny(ld.Request, "/")
 	endIdx := strings.IndexAny(ld.Request[startIdx+1:], " /") + startIdx + 1

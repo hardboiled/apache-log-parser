@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestScheduleInterval(t *testing.T) {
+func TestWebStats(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "WebStats Suite")
 }
