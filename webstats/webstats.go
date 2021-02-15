@@ -137,6 +137,7 @@ func (ws *WebStats) updateStats(timeInSeconds uint64) {
 		}
 
 		hitsForCurrentTime = 0
+		ws.setLatestTime(timeInSeconds)
 	}
 
 	ws.setHitsAtTime(timeInSeconds, hitsForCurrentTime+1)
