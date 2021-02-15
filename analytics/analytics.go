@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hardboiled/apache-log-parser/webstats"
 )
@@ -26,12 +27,12 @@ type TotalHitsAlarm struct {
 
 // Do prints alarms
 func (th TotalHitsAlarm) Do(writer io.Writer) {
-	fmtStr := "Recovered from high traffic alert - hits = %d, recovered at %d\n"
+	fmtStr := "Recovered from high traffic alert - hits = %d, recovered at %s\n"
 	if th.Flag {
-		fmtStr = "High traffic generated an alert - hits = %d, triggered at %d\n"
+		fmtStr = "High traffic generated an alert - hits = %d, triggered at %s\n"
 	}
 
-	_, err := writer.Write([]byte(fmt.Sprintf(fmtStr, th.Hits, th.CurrentTime)))
+	_, err := writer.Write([]byte(fmt.Sprintf(fmtStr, th.Hits, time.Unix(int64(th.CurrentTime), 0))))
 	if err != nil {
 		fmt.Printf("Error when writing to output: %v\n", err)
 	}
@@ -86,9 +87,10 @@ func (sd *SectionData) Do(writer io.Writer) {
 
 	output := []string{}
 
+	begin := time.Unix(int64(sd.LatestTime-uint64(len(sd.Window)-1)), 0)
 	output = append(
 		output,
-		fmt.Sprintf("Stats for time range %d - %d", sd.LatestTime-uint64(len(sd.Window)-1), sd.LatestTime),
+		fmt.Sprintf("Stats for time range %s - %s", begin, time.Unix(int64(sd.LatestTime), 0)),
 	)
 
 	totalHitsForWindow := uint64(0)
