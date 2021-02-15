@@ -11,6 +11,9 @@ const twoMinutes = 120 // 2 minutes
 //  can be initialized to.
 const MinWindowSize = twoMinutes // 2 minutes
 
+// MaxWindowSize is the max allowed retention of webStats
+const MaxWindowSize = (1 << 20) // 1MB
+
 // WindowEntry holds section data and total hits for a given time entry
 type WindowEntry struct {
 	Sections             map[string]uint64
@@ -57,8 +60,8 @@ func (ws *WebStats) LatestTime() uint64 {
 }
 
 // GetWindowForRange returns the window for begin and end inclusive
-func (ws *WebStats) GetWindowForRange(curTime uint64, timeRangeForLastSeconds uint) []WindowEntry {
-	beginRange := curTime - uint64(timeRangeForLastSeconds)
+func (ws *WebStats) GetWindowForRange(curTime uint64, timeRangeForLastSeconds uint64) []WindowEntry {
+	beginRange := curTime - timeRangeForLastSeconds
 	windowSize := uint64(len(ws.window))
 	endIdx := (curTime + 1) % windowSize // endIdx is exclusive when mapping slices
 
@@ -79,7 +82,7 @@ func (ws *WebStats) setLatestTime(date uint64) {
 }
 
 // InitWebStats safely initializes WebStats
-func InitWebStats(windowSize, totalTrafficThreshold uint) (WebStats, error) {
+func InitWebStats(windowSize, totalTrafficThreshold uint, startTime uint64) (WebStats, error) {
 	if totalTrafficThreshold == 0 {
 		return WebStats{}, fmt.Errorf("%d is an invalid threshold", totalTrafficThreshold)
 	}
@@ -91,6 +94,7 @@ func InitWebStats(windowSize, totalTrafficThreshold uint) (WebStats, error) {
 	return WebStats{
 		totalTrafficThreshold: totalTrafficThreshold,
 		window:                make([]WindowEntry, int(windowSize)),
+		latestTime:            startTime,
 	}, nil
 }
 
@@ -128,9 +132,11 @@ func (ws *WebStats) updateStats(timeInSeconds uint64) {
 		// have to zero out entries in window for any gaps between latest time recorded and current time.
 		//   Otherwise, stale calculations for the previous window could be left behind and cause future
 		//   calculations to be wrong.
-		for i := ws.LatestTime() + 1; i <= timeInSeconds; i++ {
-			ws.setLatestTime(timeInSeconds)
+		for i := ws.LatestTime() + 1; i < timeInSeconds; i++ {
+			ws.setHitsAtTime(i, 0)
 		}
+
+		hitsForCurrentTime = 0
 	}
 
 	ws.setHitsAtTime(timeInSeconds, hitsForCurrentTime+1)

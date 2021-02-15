@@ -14,12 +14,12 @@ import (
 
 const (
 	defaultInterval       = 10
-	defaultWindowSize     = webstats.MinWindowSize
+	defaultWindowSize     = webstats.MinWindowSize * 2
 	defaultAlarmThreshold = 10
 )
 
-func getFlags() (uint, uint, uint, error) {
-	interval := flag.Uint("interval", defaultInterval, "integer in seconds")
+func getFlags() (uint64, uint, uint, error) {
+	interval := flag.Uint64("interval", defaultInterval, "integer in seconds")
 	windowSize := flag.Uint("window-retention", defaultWindowSize, fmt.Sprintf("integer in seconds (min %d)", defaultWindowSize))
 	alarmThreshold := flag.Uint("alarm-threshold", defaultAlarmThreshold, "triggers alarm on request/per second over 2 mins")
 	errStrings := []string{}
@@ -31,14 +31,18 @@ func getFlags() (uint, uint, uint, error) {
 	}
 
 	if *windowSize < webstats.MinWindowSize {
-		errStrings = append(errStrings, fmt.Sprintf("window-retention cannot be < %d", defaultWindowSize))
+		errStrings = append(errStrings, fmt.Sprintf("window-retention cannot be < %d", webstats.MinWindowSize))
+	}
+
+	if *windowSize > webstats.MaxWindowSize {
+		errStrings = append(errStrings, fmt.Sprintf("window-retention cannot be > %d bytes", webstats.MaxWindowSize))
 	}
 
 	if *alarmThreshold < 1 {
 		errStrings = append(errStrings, "alarmThreshold cannot be < 1")
 	}
 
-	if *interval*2 > *windowSize {
+	if *interval*2 > uint64(*windowSize) {
 		errStrings = append(errStrings, "window must be able to hold at least two intervals")
 	}
 
@@ -67,21 +71,29 @@ func main() {
 	outputCh := make(chan analytics.ProcessAndOutputData)
 	defer close(outputCh)
 
-	webStats, err := webstats.InitWebStats(windowSize, threshold)
+	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
+	go analytics.ProcessStats(outputCh)
+
+	firstEntry := <-inputCh
+	webStats, err := webstats.InitWebStats(windowSize, threshold, firstEntry.Date)
 	if err != nil {
 		fmt.Printf("error initializing webstats: %v\n", err)
 		os.Exit(1)
 	}
-
-	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
-	go analytics.ProcessStats(outputCh)
+	webStats.AddEntry(firstEntry.RequestSection(), firstEntry.Date)
+	scheduleProcess := initScheduleInterval(firstEntry.Date-1, interval)
 
 	for data := range inputCh {
-		if data.Date%uint64(interval) == 0 && webStats.LatestTime() < data.Date {
-			outputCh <- &analytics.SectionData{
-				LatestTime: webStats.LatestTime(),
-				Window:     webStats.GetWindowForRange(webStats.LatestTime(), interval),
-			}
+		if !scheduleProcess.isScheduled() && scheduleProcess.shouldSchedule(data.Date) {
+			scheduleProcess.schedule(data.Date)
+		}
+
+		if scheduleProcess.shouldProcess(data.Date) {
+			// outputCh <- &analytics.SectionData{
+			// 	LatestTime: scheduleProcess.timeToProcess,
+			// 	Window:     webStats.GetWindowForRange(scheduleProcess.timeToProcess, scheduleProcess.interval),
+			// }
+			scheduleProcess.markAsProcessed()
 		}
 
 		lastAlarm := webStats.HasTotalTrafficAlarm()
@@ -89,6 +101,18 @@ func main() {
 		curAlarm := webStats.HasTotalTrafficAlarm()
 		if lastAlarm != curAlarm {
 			outputCh <- analytics.TotalHitsAlarm{Flag: curAlarm, Hits: webStats.TotalHitsForLast2Min(), CurrentTime: webStats.LatestTime()}
+		}
+	}
+
+	if scheduleProcess.lastTimeProcessed < webStats.LatestTime() {
+		numSecondsLeft := webStats.LatestTime() - scheduleProcess.lastTimeProcessed
+		if numSecondsLeft > interval {
+			numSecondsLeft = interval // if lastTimeProcessed was greater than the interval, only process the last interval
+		}
+
+		outputCh <- &analytics.SectionData{
+			LatestTime: webStats.LatestTime(),
+			Window:     webStats.GetWindowForRange(webStats.LatestTime(), numSecondsLeft),
 		}
 	}
 }
