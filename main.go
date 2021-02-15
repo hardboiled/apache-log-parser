@@ -16,12 +16,14 @@ const (
 	defaultInterval       = 10
 	defaultWindowSize     = webstats.MinWindowSize * 2
 	defaultAlarmThreshold = 10
+	defaultInputFilepath  = "./input_files/sample_csv.txt"
 )
 
-func getFlags() (uint64, uint, uint, error) {
+func getFlags() (uint64, uint, uint, string, error) {
 	interval := flag.Uint64("interval", defaultInterval, "integer in seconds")
 	windowSize := flag.Uint("window-retention", defaultWindowSize, fmt.Sprintf("integer in seconds (min %d)", defaultWindowSize))
 	alarmThreshold := flag.Uint("alarm-threshold", defaultAlarmThreshold, "triggers alarm on request/per second over 2 mins")
+	inputFilepath := flag.String("input-filepath", defaultInputFilepath, "triggers alarm on request/per second over 2 mins")
 	errStrings := []string{}
 
 	flag.Parse()
@@ -46,22 +48,26 @@ func getFlags() (uint64, uint, uint, error) {
 		errStrings = append(errStrings, "window must be able to hold at least two intervals")
 	}
 
+	if _, err := os.Stat(*inputFilepath); os.IsNotExist(err) {
+		errStrings = append(errStrings, fmt.Sprintf("input filepath %s does not exist", *inputFilepath))
+	}
+
 	var err error
 	if len(errStrings) > 0 {
 		err = errors.New(strings.Join(errStrings, "\n"))
 	}
 
-	return *interval, *windowSize, *alarmThreshold, err
+	return *interval, *windowSize, *alarmThreshold, *inputFilepath, err
 }
 
 func main() {
-	interval, windowSize, threshold, err := getFlags()
+	interval, windowSize, threshold, inputFilepath, err := getFlags()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	reader, err := os.Open("./input_files/sample_csv.txt")
+	reader, err := os.Open(inputFilepath)
 	if err != nil {
 		fmt.Printf("error opening input file: %v\n", err)
 		os.Exit(1)
@@ -89,10 +95,10 @@ func main() {
 		}
 
 		if scheduleProcess.shouldProcess(data.Date) {
-			// outputCh <- &analytics.SectionData{
-			// 	LatestTime: scheduleProcess.timeToProcess,
-			// 	Window:     webStats.GetWindowForRange(scheduleProcess.timeToProcess, scheduleProcess.interval),
-			// }
+			outputCh <- &analytics.SectionData{
+				LatestTime: scheduleProcess.timeToProcess,
+				Window:     webStats.GetWindowForRange(scheduleProcess.timeToProcess, scheduleProcess.secondsAgo),
+			}
 			scheduleProcess.markAsProcessed()
 		}
 
@@ -105,6 +111,7 @@ func main() {
 	}
 
 	if scheduleProcess.lastTimeProcessed < webStats.LatestTime() {
+		// Flush remaining
 		numSecondsLeft := webStats.LatestTime() - scheduleProcess.lastTimeProcessed
 		if numSecondsLeft > interval {
 			numSecondsLeft = interval // if lastTimeProcessed was greater than the interval, only process the last interval

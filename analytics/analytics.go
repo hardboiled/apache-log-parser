@@ -77,7 +77,7 @@ func (sd *SectionData) Do() {
 		topSectionsOrderedDesc = append(topSectionsOrderedDesc, topSection{curSection, curMax})
 	}
 
-	fmt.Printf("Stats for time range %d - %d\n", sd.LatestTime-uint64(len(sd.Window)+1), sd.LatestTime)
+	fmt.Printf("Stats for time range %d - %d\n", sd.LatestTime-uint64(len(sd.Window)-1), sd.LatestTime)
 	for _, v := range topSectionsOrderedDesc {
 		fmt.Printf("\t %s -> hits: %d\n", v.name, v.hits)
 	}

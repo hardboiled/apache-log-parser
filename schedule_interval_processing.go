@@ -4,23 +4,23 @@ const bufferForOverlappingLogTimes = uint64(5)
 
 type scheduleInterval struct {
 	lastTimeProcessed uint64
-	interval          uint64
+	secondsAgo        uint64
 	timeToProcess     uint64
 }
 
 func initScheduleInterval(startTime, interval uint64) scheduleInterval {
 	return scheduleInterval{
 		lastTimeProcessed: startTime,
-		interval:          interval,
+		secondsAgo:        interval - 1,
 	}
 }
 
 func (sp *scheduleInterval) shouldProcess(nextDate uint64) bool {
-	return nextDate-sp.timeToProcess > sp.interval+bufferForOverlappingLogTimes
+	return sp.isScheduled() && nextDate-sp.timeToProcess > bufferForOverlappingLogTimes
 }
 
 func (sp *scheduleInterval) shouldSchedule(nextDate uint64) bool {
-	return nextDate-sp.lastTimeProcessed > sp.interval
+	return nextDate-sp.lastTimeProcessed > sp.secondsAgo
 }
 
 func (sp *scheduleInterval) schedule(scheduleDate uint64) {
