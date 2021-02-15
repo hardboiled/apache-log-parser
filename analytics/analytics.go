@@ -5,6 +5,8 @@ package analytics
 
 import (
 	"fmt"
+	"io"
+	"strings"
 	"sync"
 
 	"github.com/hardboiled/apache-log-parser/webstats"
@@ -12,7 +14,7 @@ import (
 
 // ProcessAndOutputData processes the stats provided
 type ProcessAndOutputData interface {
-	Do()
+	Do(writer io.Writer)
 }
 
 // TotalHitsAlarm hello
@@ -23,12 +25,16 @@ type TotalHitsAlarm struct {
 }
 
 // Do prints alarms
-func (th TotalHitsAlarm) Do() {
+func (th TotalHitsAlarm) Do(writer io.Writer) {
+	fmtStr := "Recovered from high traffic alert - hits = %d, recovered at %d\n"
 	if th.Flag {
-		fmt.Printf("High traffic generated an alert - hits = %d, triggered at %d\n", th.Hits, th.CurrentTime)
-		return
+		fmtStr = "High traffic generated an alert - hits = %d, triggered at %d\n"
 	}
-	fmt.Printf("Recovered from high traffic alert - hits = %d, recovered at %d\n", th.Hits, th.CurrentTime)
+
+	_, err := writer.Write([]byte(fmt.Sprintf(fmtStr, th.Hits, th.CurrentTime)))
+	if err != nil {
+		fmt.Printf("Error when writing to output: %v\n", err)
+	}
 }
 
 // SectionData hello
@@ -38,7 +44,7 @@ type SectionData struct {
 }
 
 // Do output of section data
-func (sd *SectionData) Do() {
+func (sd *SectionData) Do(writer io.Writer) {
 	totalHitsPerSection := map[string]uint64{}
 	numSections := 0
 
@@ -78,22 +84,35 @@ func (sd *SectionData) Do() {
 		topSectionsOrderedDesc = append(topSectionsOrderedDesc, topSection{curSection, curMax})
 	}
 
-	fmt.Printf("Stats for time range %d - %d\n", sd.LatestTime-uint64(len(sd.Window)-1), sd.LatestTime)
+	output := []string{}
+
+	output = append(
+		output,
+		fmt.Sprintf("Stats for time range %d - %d", sd.LatestTime-uint64(len(sd.Window)-1), sd.LatestTime),
+	)
+
 	totalHitsForWindow := uint64(0)
 	for _, v := range sd.Window {
 		totalHitsForWindow = totalHitsForWindow + v.TotalHitsForTimeSlot
 	}
-	fmt.Printf("\ttotal hits for this window %d\n", totalHitsForWindow)
+
+	output = append(output, fmt.Sprintf("\ttotal hits for this window %d", totalHitsForWindow))
 
 	for _, v := range topSectionsOrderedDesc {
-		fmt.Printf("\t %s -> hits: %d\n", v.name, v.hits)
+		output = append(output, fmt.Sprintf("\t %s -> hits: %d", v.name, v.hits))
+	}
+
+	result := strings.Join(output, "\n") + "\n"
+	_, err := writer.Write([]byte(result))
+	if err != nil {
+		fmt.Printf("Error when writing to output: %v\n", err)
 	}
 }
 
 // ProcessStats runs calculations and prints results
-func ProcessStats(ch chan ProcessAndOutputData, wg *sync.WaitGroup) {
+func ProcessStats(ch chan ProcessAndOutputData, writer io.Writer, wg *sync.WaitGroup) {
 	for val := range ch {
-		val.Do()
+		val.Do(writer)
 		wg.Done()
 	}
 }

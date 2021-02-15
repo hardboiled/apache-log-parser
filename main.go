@@ -1,14 +1,14 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/hardboiled/apache-log-parser/analytics"
+	"github.com/hardboiled/apache-log-parser/manage"
 	"github.com/hardboiled/apache-log-parser/parsing"
 	"github.com/hardboiled/apache-log-parser/webstats"
 )
@@ -20,92 +20,88 @@ const (
 	defaultInputFilepath  = "./input_files/sample_csv.txt"
 )
 
-func getFlags() (uint64, uint, uint, string, error) {
-	interval := flag.Uint64("interval", defaultInterval, "integer in seconds")
+func getFlags() (manage.Config, error) {
+	interval := flag.Uint("interval", defaultInterval, "integer in seconds")
 	windowSize := flag.Uint("window-retention", defaultWindowSize, fmt.Sprintf("integer in seconds (min %d)", defaultWindowSize))
 	alarmThreshold := flag.Uint("alarm-threshold", defaultAlarmThreshold, "triggers alarm on request/per second over 2 mins")
 	inputFilepath := flag.String("input-filepath", defaultInputFilepath, "triggers alarm on request/per second over 2 mins")
-	errStrings := []string{}
+	outputFilepath := flag.String("output-filepath", "", "triggers alarm on request/per second over 2 mins")
 
 	flag.Parse()
 
-	if *interval < 1 {
-		errStrings = append(errStrings, "interval cannot be < 1")
+	return manage.InitConfig(*interval, *windowSize, *alarmThreshold, *inputFilepath, *outputFilepath)
+}
+
+func setupBuffers(config manage.Config) (io.ReadCloser, chan parsing.WebServerLogData, io.WriteCloser, chan analytics.ProcessAndOutputData, error) {
+	reader, err := os.Open(config.InputFilepath)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("error opening input file: %v", err)
 	}
 
-	if *windowSize < webstats.MinWindowSize {
-		errStrings = append(errStrings, fmt.Sprintf("window-retention cannot be < %d", webstats.MinWindowSize))
+	var writer io.WriteCloser
+	if config.OutputFilepath != "" {
+		writer, err = os.OpenFile(config.OutputFilepath, os.O_CREATE, os.FileMode(os.O_RDWR))
+		if err != nil {
+			reader.Close()
+			return nil, nil, nil, nil, fmt.Errorf("error opening input file: %v", err)
+		}
+
+	} else {
+		writer = os.Stdout
 	}
 
-	if *windowSize > webstats.MaxWindowSize {
-		errStrings = append(errStrings, fmt.Sprintf("window-retention cannot be > %d bytes", webstats.MaxWindowSize))
-	}
+	inputCh := make(chan parsing.WebServerLogData, 100)
+	outputCh := make(chan analytics.ProcessAndOutputData)
 
-	if *alarmThreshold < 1 {
-		errStrings = append(errStrings, "alarmThreshold cannot be < 1")
-	}
-
-	if *interval*2 > uint64(*windowSize) {
-		errStrings = append(errStrings, "window must be able to hold at least two intervals")
-	}
-
-	if _, err := os.Stat(*inputFilepath); os.IsNotExist(err) {
-		errStrings = append(errStrings, fmt.Sprintf("input filepath %s does not exist", *inputFilepath))
-	}
-
-	var err error
-	if len(errStrings) > 0 {
-		err = errors.New(strings.Join(errStrings, "\n"))
-	}
-
-	return *interval, *windowSize, *alarmThreshold, *inputFilepath, err
+	return reader, inputCh, writer, outputCh, nil
 }
 
 func main() {
-	interval, windowSize, threshold, inputFilepath, err := getFlags()
+	config, err := getFlags()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	reader, err := os.Open(inputFilepath)
+	reader, inputCh, writer, outputCh, err := setupBuffers(config)
 	if err != nil {
-		fmt.Printf("error opening input file: %v\n", err)
+		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	inputCh := make(chan parsing.WebServerLogData, 100)
-	outputCh := make(chan analytics.ProcessAndOutputData)
+	// setup go routines and channels
 	var wg sync.WaitGroup
-
+	defer reader.Close()
+	defer writer.Close()
 	defer close(outputCh)
 
+	// Note: `ParseWebServerLogDataWithChannel` closes the inputCh when finished
 	go parsing.ParseWebServerLogDataWithChannel(reader, inputCh)
-	go analytics.ProcessStats(outputCh, &wg)
+	go analytics.ProcessStats(outputCh, writer, &wg)
 
+	// read in first entry to initialize
 	firstEntry := <-inputCh
-	webStats, err := webstats.InitWebStats(windowSize, threshold, firstEntry.Date)
+	webStats, err := webstats.InitWebStats(config.WindowSize, config.AlarmThreshold, firstEntry.Date)
 	if err != nil {
 		fmt.Printf("error initializing webstats: %v\n", err)
 		os.Exit(1)
 	}
 	webStats.AddEntry(firstEntry.RequestSection(), firstEntry.Date)
-	scheduleProcess := initScheduleInterval(firstEntry.Date-1, interval)
+	scheduleInterval := analytics.InitScheduleInterval(firstEntry.Date, config.Interval)
 
+	// main loop
 	for data := range inputCh {
-		if !scheduleProcess.isScheduled() && scheduleProcess.shouldSchedule(data.Date) {
-			scheduleProcess.schedule(data.Date)
-		}
-
-		if scheduleProcess.shouldProcess(data.Date) {
+		// Check to print interval
+		if scheduleInterval.ReadyToProcess(data.Date) {
 			wg.Add(1)
 			outputCh <- &analytics.SectionData{
-				LatestTime: scheduleProcess.timeToProcess,
-				Window:     webStats.GetWindowForRange(scheduleProcess.timeToProcess, scheduleProcess.secondsAgo),
+				LatestTime: scheduleInterval.TimeToProcess(),
+				Window:     webStats.GetWindowForRange(scheduleInterval.TimeToProcess(), scheduleInterval.SecondsAgo()),
 			}
-			scheduleProcess.markAsProcessed()
+			scheduleInterval.MarkAsProcessed()
 		}
 
+		// Compare alarm state from previous entry, if different, print alarm status
 		lastAlarm := webStats.HasTotalTrafficAlarm()
 		webStats.AddEntry(data.RequestSection(), data.Date)
 		curAlarm := webStats.HasTotalTrafficAlarm()
@@ -115,11 +111,11 @@ func main() {
 		}
 	}
 
-	if scheduleProcess.lastTimeProcessed < webStats.LatestTime() {
-		// Flush remaining
-		numSecondsLeft := webStats.LatestTime() - scheduleProcess.lastTimeProcessed
-		if numSecondsLeft > interval {
-			numSecondsLeft = interval // if lastTimeProcessed was greater than the interval, only process the last interval
+	// Flush remaining results
+	if scheduleInterval.LastTimeProcessed() < webStats.LatestTime() {
+		numSecondsLeft := webStats.LatestTime() - scheduleInterval.LastTimeProcessed()
+		if numSecondsLeft > config.Interval {
+			numSecondsLeft = config.Interval // if lastTimeProcessed was greater than the interval, only process the last interval
 		}
 
 		wg.Add(1)
